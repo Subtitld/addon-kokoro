@@ -32,7 +32,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'kokoro'
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 
 # Voice id (with `kokoro-` prefix stripped) → kokoro lang_code, kokoro voice id.
 # Mirrors the manifest. Single source of truth for the wrapper, since the
@@ -169,8 +169,12 @@ def handle_tts_synthesize(rid: str, params: dict, defaults: dict) -> None:
         emit_error(rid, 'bad_params', 'text, voice, and output_path are all required')
         return
 
-    # Voice ids in the manifest are prefixed `kokoro-`; strip it for the lookup.
+    # Voice ids in the manifest are prefixed `kokoro-` and use dashes for
+    # word boundaries (Subtitld convention, e.g. `kokoro-pf-dora`). Kokoro's
+    # upstream voice names use underscores (e.g. `pf_dora`). Translate both
+    # in one pass so the manifest can stay dash-separated.
     bare = voice_id[len('kokoro-'):] if voice_id.startswith('kokoro-') else voice_id
+    bare = bare.replace('-', '_')
     voice_meta = _VOICE_BY_ID.get(bare)
     if voice_meta is None:
         emit_error(rid, 'unsupported_voice', f'unknown voice id: {voice_id!r}')
@@ -303,6 +307,13 @@ def main() -> int:
                 args=(rid, frame.get('params') or {}, defaults),
                 daemon=True,
             ).start()
+            continue
+        # Host control frames (`ready` confirms our hello, future-proof for
+        # other host-→-addon notifications) carry no request id and expect
+        # no response. Log and ignore — only error on actual *requests* we
+        # don't recognise.
+        if not rid:
+            log.debug('ignoring host control frame: %s', ftype)
             continue
 
         emit_error(rid, 'bad_params', f'unknown request type: {ftype!r}')
