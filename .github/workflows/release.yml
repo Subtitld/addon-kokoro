@@ -1,0 +1,185 @@
+name: Release
+
+# Cuts the platform zips for the Kokoro 82M add-on, attaches them to a
+# GitHub Release, and pings the catalog repo.
+#
+# Kokoro is the lightest of the catalog (~80 MB weights, sub-second
+# inference). Build is dominated by the PyTorch CPU wheel, not the
+# model itself.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform_suffix: linux-x86_64
+          - os: macos-latest
+            platform_suffix: macos-universal
+          - os: windows-latest
+            platform_suffix: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          MANIFEST_VERSION=$(python -c "import json; print(json.load(open('manifest.json'))['version'])")
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::tag $TAG implies version $VERSION but manifest.json declares $MANIFEST_VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install build deps
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+          # `kokoro[en,ja,zh,hi]` pulls misaki + the per-language G2P
+          # extras. Without the extras, KPipeline refuses to build for
+          # ja/zh/hi at runtime — and we want the smoke test to validate
+          # that path (manifest declares those langs).
+          pip install "kokoro[en,ja,zh,hi]"
+
+      - name: Build add-on bundle
+        run: pyinstaller kokoro-addon.spec --distpath dist/
+
+      - name: Smoke test frozen binary (hello frame)
+        shell: bash
+        run: |
+          set -e
+          BIN_DIR="dist/kokoro-addon"
+          BIN_NAME="kokoro-addon"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN_NAME="${BIN_NAME}.exe"; fi
+          BIN="$BIN_DIR/$BIN_NAME"
+          # The wrapper writes `hello` immediately on startup; we read
+          # one line, parse it, and confirm protocol identity. EOF on
+          # stdin (< /dev/null) makes the wrapper exit cleanly after.
+          # 30 s should be plenty even on the slow Windows runner.
+          HELLO=$(timeout 30 "$BIN" < /dev/null | head -n 1)
+          echo "frame: $HELLO"
+          python - "$HELLO" <<'PY'
+          import json, sys
+          frame = json.loads(sys.argv[1])
+          assert frame.get('type') == 'hello', frame
+          assert frame.get('addon') == 'kokoro', frame
+          caps = frame.get('capabilities') or []
+          assert any(c.get('task') == 'tts.synthesize' for c in caps), caps
+          PY
+
+      - name: Pack zip
+        id: pack
+        shell: bash
+        run: |
+          set -e
+          VERSION="${{ steps.ver.outputs.version }}"
+          PLAT="${{ matrix.platform_suffix }}"
+          ZIP_NAME="kokoro-${VERSION}-${PLAT}.zip"
+          STAGE="$RUNNER_TEMP/stage"
+          mkdir -p "$STAGE/bin"
+          cp -r dist/kokoro-addon/* "$STAGE/bin/"
+          cp manifest.json LICENSE README.md "$STAGE/"
+          # Use Python's shutil.make_archive — Windows runner's Git Bash
+          # doesn't ship `zip`. Python is on PATH via setup-python@v5.
+          python - "$STAGE" "$GITHUB_WORKSPACE/${ZIP_NAME%.zip}" <<'PY'
+          import shutil, sys
+          shutil.make_archive(sys.argv[2], 'zip', sys.argv[1])
+          PY
+          echo "zip_path=$GITHUB_WORKSPACE/$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Compute sha256 sidecar
+        shell: bash
+        run: |
+          ZIP="${{ steps.pack.outputs.zip_path }}"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$(basename "$ZIP")" > "${ZIP}.sha256"
+          else
+            shasum -a 256 "$(basename "$ZIP")" > "${ZIP}.sha256"
+          fi
+          cat "${ZIP}.sha256"
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zip-${{ matrix.platform_suffix }}
+          path: |
+            ${{ steps.pack.outputs.zip_path }}
+            ${{ steps.pack.outputs.zip_path }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Resolve tag
+        id: tagref
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          TAG="${{ steps.tagref.outputs.tag }}"
+          mapfile -t ASSETS < <(find artifacts -type f \( -name '*.zip' -o -name '*.sha256' \))
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Automated release for kokoro $TAG." \
+              "${ASSETS[@]}"
+          fi
+
+      - name: Trigger Subtitld catalog rebuild
+        env:
+          GH_TOKEN: ${{ secrets.SUBTITLD_BOT_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::SUBTITLD_BOT_TOKEN not set — catalog rebuild skipped (cron will pick this up within 6 h)"
+            exit 0
+          fi
+          gh api repos/Subtitld/addons-catalog/dispatches \
+            -f event_type=catalog-rebuild \
+            -F client_payload[addon]=kokoro \
+            -F client_payload[tag]="${{ steps.tagref.outputs.tag }}"
