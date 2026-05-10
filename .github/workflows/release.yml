@@ -67,6 +67,25 @@ jobs:
           # ja/zh/hi at runtime — and we want the smoke test to validate
           # that path (manifest declares those langs).
           pip install "kokoro[en,ja,zh,hi]"
+          # Pin transformers below the 4.55 line. The 4.55+ refactor for
+          # Mixture-of-Experts dispatch added two pieces that are hostile
+          # to PyInstaller bundles:
+          #
+          #   1. `_can_set_experts_implementation` in modeling_utils.py
+          #      runs `open(inspect.getfile(cls))` on every model class
+          #      in the MRO at __init__ time. PyInstaller ships bytecode,
+          #      not .py source, so the open() raises FileNotFoundError
+          #      even for non-MoE models like Kokoro's Albert backbone.
+          #   2. `audio_utils.py` does
+          #      `version.parse(importlib.metadata.version("torchcodec"))`
+          #      at module-load time without a try/except, exploding the
+          #      entire transformers import chain when torchcodec is not
+          #      installed.
+          #
+          # Kokoro doesn't use MoE, doesn't need bleeding-edge transformers.
+          # 4.40 is the floor (`isin_mps_friendly` came in then), 4.55 is
+          # where the breakage starts.
+          pip install --upgrade "transformers>=4.40,<4.55"
 
       - name: Build add-on bundle
         run: pyinstaller kokoro-addon.spec --distpath dist/
