@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "id": "kokoro",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "display_name": "Kokoro 82M (offline)",
   "summary": "Lightweight Apache-2.0 neural TTS. ~80 MB model, 9 languages, 54 preset voices, no cloning.",
   "author": "Subtitld add-on team",
