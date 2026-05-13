@@ -28,7 +28,12 @@ hiddenimports = (
     _safe_collect(collect_submodules, 'kokoro')
     + _safe_collect(collect_submodules, 'misaki')
     + _safe_collect(collect_submodules, 'transformers')
-    + _safe_collect(collect_submodules, 'soundfile')
+    # Note: `soundfile` was previously listed here, but the addon now
+    # writes WAV via stdlib `wave` — see `_write_wav` in kokoro_addon.py
+    # for the rationale (PyInstaller dropped the CFFI binding silently
+    # when it wasn't installed at build time, crashing synthesis on
+    # first call). No equivalent stdlib gap exists for the remaining
+    # entries below.
     + _safe_collect(collect_submodules, 'phonemizer')
     + _safe_collect(collect_submodules, 'segments')
     + _safe_collect(collect_submodules, 'csvw')

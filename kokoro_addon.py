@@ -32,7 +32,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'kokoro'
-VERSION = '1.0.5'
+VERSION = '1.0.6'
 
 # Voice id (with `kokoro-` prefix stripped) → kokoro lang_code, kokoro voice id.
 # Mirrors the manifest. Single source of truth for the wrapper, since the
@@ -141,9 +141,19 @@ def _get_pipeline(lang_code: str, device: str):
 # ---------------------------------------------------------------------------
 def _write_wav(path: str, wav, sample_rate: int) -> tuple[float, int, int]:
     """Write a 1-D float waveform out as PCM-16 mono WAV. Returns
-    (duration_sec, sample_rate, channels)."""
+    (duration_sec, sample_rate, channels).
+
+    Uses stdlib `wave` rather than `soundfile`. `soundfile` is a CFFI
+    binding to libsndfile and PyInstaller's `collect_submodules` returns
+    an empty list when the package isn't installed at build time — the
+    frozen bundle then ships without the module and synthesis crashes at
+    runtime with `ModuleNotFoundError: No module named 'soundfile'`. We
+    only need to write a single-channel PCM-16 WAV here; stdlib `wave`
+    does exactly that with zero extension dependencies, so the failure
+    mode can't recur.
+    """
+    import wave
     import numpy as np
-    import soundfile as sf
 
     arr = np.asarray(wav)
     if arr.ndim > 1:
@@ -152,7 +162,16 @@ def _write_wav(path: str, wav, sample_rate: int) -> tuple[float, int, int]:
         raise RuntimeError(f'unexpected waveform shape: {arr.shape}')
 
     arr = np.clip(arr.astype(np.float32, copy=False), -1.0, 1.0)
-    sf.write(path, arr, int(sample_rate), subtype='PCM_16')
+    # Float [-1, 1] → little-endian PCM-16. `<i2` is the explicit byte
+    # order and width — without it numpy would pick native order, which
+    # WAV (always little-endian) interprets wrong on big-endian hosts.
+    pcm16 = (arr * 32767.0).astype('<i2', copy=False).tobytes()
+
+    with wave.open(path, 'wb') as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)        # bytes per sample, 16-bit
+        out.setframerate(int(sample_rate))
+        out.writeframes(pcm16)
 
     duration = float(len(arr)) / float(sample_rate or 1)
     return duration, int(sample_rate), 1
