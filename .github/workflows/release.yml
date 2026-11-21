@@ -66,7 +66,11 @@ jobs:
           # extras. Without the extras, KPipeline refuses to build for
           # ja/zh/hi at runtime — and we want the smoke test to validate
           # that path (manifest declares those langs).
-          pip install "kokoro[en,ja,zh,hi]"
+          # The language extras are misaki's, not kokoro's: `kokoro[ja,zh]`
+          # installed none of them, so Japanese and Chinese never worked up
+          # to 26.11.1. Japanese uses unidic-lite (bundled, ~50 MB) instead
+          # of unidic, which needs a separate 500+ MB download.
+          pip install kokoro "misaki[en,zh]" fugashi jaconv mojimoji pyopenjtalk unidic-lite
           # Pin transformers below the 4.55 line. The 4.55+ refactor for
           # Mixture-of-Experts dispatch added two pieces that are hostile
           # to PyInstaller bundles:

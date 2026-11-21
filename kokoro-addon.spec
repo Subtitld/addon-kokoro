@@ -24,6 +24,9 @@ def _safe_collect(fn, name):
 # bundle crashed on first synthesis with:
 #   FileNotFoundError: '.../_internal/language_tags/data/json/index.json'
 # Collect submodules + data files for the whole transitive chain.
+JA_ZH = ['fugashi', 'unidic_lite', 'cutlet', 'jaconv', 'mojimoji', 'pyopenjtalk',
+         'jieba', 'pypinyin', 'pypinyin_dict', 'cn2an', 'ordered_set']
+
 hiddenimports = (
     _safe_collect(collect_submodules, 'kokoro')
     + _safe_collect(collect_submodules, 'misaki')
@@ -45,6 +48,9 @@ hiddenimports = (
     # add-on can't do (1.0.6 hung on its first English line).
     + _safe_collect(collect_submodules, 'spacy')
     + _safe_collect(collect_submodules, 'en_core_web_sm')
+    # Japanese (misaki's cutlet: fugashi + unidic-lite) and Chinese
+    # (jieba, pypinyin, cn2an). Missing until 26.11.2.
+    + [m for pkg in JA_ZH for m in _safe_collect(collect_submodules, pkg)]
 )
 datas = (
     _safe_collect(collect_data_files, 'kokoro')
@@ -64,6 +70,7 @@ datas = (
     + _safe_collect(collect_data_files, 'spacy')
     + _safe_collect(collect_data_files, 'en_core_web_sm')
     + copy_metadata('en_core_web_sm')
+    + [d for pkg in JA_ZH for d in _safe_collect(collect_data_files, pkg)]
     + [('manifest.json', '.')]
 )
 

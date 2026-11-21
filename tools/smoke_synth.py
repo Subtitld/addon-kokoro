@@ -20,6 +20,8 @@ LINES = [
     ('kokoro-af-heart', 'Hello there. It is 9:30, and the meeting starts in five minutes.'),
     ('kokoro-bm-george', 'Good evening, and welcome to the programme.'),
     ('kokoro-ef-dora', 'Todos los seres humanos nacen libres e iguales.'),
+    ('kokoro-jf-alpha', 'すべての人間は、生まれながらにして自由である。'),
+    ('kokoro-zf-xiaobei', '人人生而自由，在尊严和权利上一律平等。'),
 ]
 TIMEOUT = 900
 

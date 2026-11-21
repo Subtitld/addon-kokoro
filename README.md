@@ -30,9 +30,9 @@ encoder path. Use Coqui XTTS, Qwen3-TTS, or F5-TTS for cloning.
 ```bash
 pip install pyinstaller
 pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-# misaki extras unlock G2P for non-English language codes; without them,
-# Kokoro will refuse to build a pipeline for ja/zh/hi etc.
-pip install "kokoro[en,ja,zh,hi]"
+# The language extras are misaki's (kokoro has none). Japanese takes
+# unidic-lite rather than misaki[ja]'s unidic, a separate 500+ MB download.
+pip install kokoro "misaki[en,zh]" fugashi jaconv mojimoji pyopenjtalk unidic-lite
 pip install --upgrade "transformers>=4.40,<4.55"
 # spaCy's English model, for misaki's English G2P (see below)
 pip install "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
@@ -42,7 +42,8 @@ python tools/smoke_synth.py dist/kokoro-addon/kokoro-addon   # speaks real lines
 
 The release workflow does the same on Linux, macOS and Windows for a tag
 `v<version>` matching `manifest.json`, and fails if the frozen add-on can't
-speak an American English, a British English and a Spanish line.
+speak an American English, a British English, a Spanish, a Japanese and a
+Chinese line.
 
 spaCy's English model (`en_core_web_sm`, MIT) is part of the bundle. Before
 26.11.1 it wasn't: misaki then asked spaCy to download it on the first English
@@ -50,9 +51,12 @@ line, spaCy ran `sys.executable -m pip`, which in a frozen add-on is the
 add-on itself, and the line never finished. The add-on now refuses any such
 download, and keeps stdout for protocol frames only.
 
-`espeak-ng` is required at runtime for non-English language codes (the
-G2P fallback path). Linux users typically install via `apt`, macOS via
-`brew install espeak-ng`. Windows: bundled with the misaki distribution.
+Japanese and Chinese have worked since 26.11.2. Up to 26.11.1 the build
+installed `kokoro[ja,zh]`, extras that don't exist, so the bundle had no
+Japanese or Chinese G2P and those voices failed on their first line.
+
+espeak-ng, which the other languages use, is part of the bundle
+(`espeakng_loader`); nothing has to be installed on the computer.
 
 ## Model storage
 
@@ -65,3 +69,9 @@ shared model across all language pipelines.
 
 Wrapper code: Apache-2.0. Kokoro 82M weights: Apache-2.0 — commercial
 use is permitted, no extra license needed.
+
+Bundled text front ends: misaki (Apache-2.0), spaCy and en_core_web_sm (MIT),
+espeak-ng (GPL-3.0, through espeakng_loader), fugashi (MIT) with MeCab
+(BSD-3-Clause, chosen from its BSD/GPL/LGPL triple licence) and unidic-lite
+(MIT; the UniDic 2.1.2 dictionary in it is BSD-3-Clause), pyopenjtalk (MIT),
+jieba (MIT), pypinyin (MIT) and cn2an (MIT).

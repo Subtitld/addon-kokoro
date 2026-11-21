@@ -32,7 +32,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'kokoro'
-VERSION = '26.11.1'
+VERSION = '26.11.2'
 
 # Voice id (with `kokoro-` prefix stripped) → kokoro lang_code, kokoro voice id.
 # Mirrors the manifest. Single source of truth for the wrapper, since the
