@@ -96,6 +96,14 @@ jobs:
           # first English line). 3.8.0 is the model for spaCy 3.8.
           pip install "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
 
+      - name: Keep a full pkg_resources
+        shell: bash
+        run: |
+          # torch pulls setuptools 84, whose pkg_resources lacks NullProvider;
+          # PyInstaller's pkg_resources runtime hook then kills the frozen
+          # add-on at start (seen on macOS). torch needs >= 77.
+          pip install "setuptools>=77,<81"
+
       - name: Build add-on bundle
         run: pyinstaller kokoro-addon.spec --distpath dist/
 
