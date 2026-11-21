@@ -1,7 +1,7 @@
 # PyInstaller spec for the kokoro add-on.
 # Build with: pyinstaller kokoro-addon.spec --distpath dist/
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 
 def _safe_collect(fn, name):
@@ -39,6 +39,12 @@ hiddenimports = (
     + _safe_collect(collect_submodules, 'csvw')
     + _safe_collect(collect_submodules, 'language_tags')
     + _safe_collect(collect_submodules, 'espeakng_loader')
+    # misaki's English G2P runs spaCy's en_core_web_sm. spaCy decides it is
+    # installed from the package metadata, so the dist-info goes in too;
+    # without it misaki downloaded the model at runtime, which a frozen
+    # add-on can't do (1.0.6 hung on its first English line).
+    + _safe_collect(collect_submodules, 'spacy')
+    + _safe_collect(collect_submodules, 'en_core_web_sm')
 )
 datas = (
     _safe_collect(collect_data_files, 'kokoro')
@@ -55,6 +61,9 @@ datas = (
     # up the .py files via auto-discovery but doesn't bundle the
     # `espeak-ng-data` tree (it's not Python source). Collect explicitly.
     + _safe_collect(collect_data_files, 'espeakng_loader')
+    + _safe_collect(collect_data_files, 'spacy')
+    + _safe_collect(collect_data_files, 'en_core_web_sm')
+    + copy_metadata('en_core_web_sm')
     + [('manifest.json', '.')]
 )
 

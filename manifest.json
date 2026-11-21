@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "id": "kokoro",
-  "version": "1.0.6",
+  "version": "26.11.1",
   "display_name": "Kokoro 82M (offline)",
   "summary": "Lightweight Apache-2.0 neural TTS. ~80 MB model, 9 languages, 54 preset voices, no cloning.",
   "author": "Subtitld add-on team",
@@ -11,6 +11,7 @@
   "startup_timeout_sec": 60,
   "platforms": ["linux", "macos", "windows"],
   "tasks": ["tts.synthesize"],
+  "compute": "cpu",
   "voice_clone": false,
   "languages": ["en-us", "en-gb", "es", "fr", "hi", "it", "ja", "pt-br", "zh-cn"],
   "voices": [

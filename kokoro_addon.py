@@ -32,7 +32,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'kokoro'
-VERSION = '1.0.6'
+VERSION = '26.11.1'
 
 # Voice id (with `kokoro-` prefix stripped) → kokoro lang_code, kokoro voice id.
 # Mirrors the manifest. Single source of truth for the wrapper, since the
@@ -84,13 +84,18 @@ _VOICE_BY_ID: dict[str, tuple[str, str]] = {
 # Wire helpers
 # ---------------------------------------------------------------------------
 _write_lock = threading.Lock()
+# stdout is the protocol channel. Libraries print to it (KPipeline's
+# "Defaulting repo_id" warning, for one), which the host can't parse, so
+# frames go to a handle of their own and print() goes to stderr.
+_protocol_out = sys.stdout
+sys.stdout = sys.stderr
 
 
 def write_frame(frame: dict) -> None:
     line = json.dumps(frame, ensure_ascii=False)
     with _write_lock:
-        sys.stdout.write(line + '\n')
-        sys.stdout.flush()
+        _protocol_out.write(line + '\n')
+        _protocol_out.flush()
 
 
 def emit_progress(rid, value, message=''):
@@ -131,9 +136,35 @@ def _get_pipeline(lang_code: str, device: str):
         # `device` kwarg in the public API. The CPU/CUDA distinction is
         # enforced via CUDA_VISIBLE_DEVICES at process spawn (host side).
         log.info('building KPipeline lang_code=%s device=%s', lang_code, device)
-        pipeline = KPipeline(lang_code=lang_code)
+        _no_spacy_download()
+        pipeline = KPipeline(lang_code=lang_code, repo_id='hexgrad/Kokoro-82M')
         _pipelines[lang_code] = pipeline
         return pipeline
+
+
+def _no_spacy_download() -> None:
+    """Make a missing spaCy model an error instead of a download.
+
+    misaki's English G2P loads spaCy's en_core_web_sm and, when spaCy doesn't
+    see it installed, calls spacy.cli.download, which runs
+    `sys.executable -m pip install ...` (or `uv pip install`). Frozen,
+    sys.executable is this add-on, so that started a second add-on on the
+    host's pipe and the first English line hung or crashed (1.0.6). The
+    model is bundled since 26.11.1; this keeps a broken bundle from trying.
+    """
+    try:
+        import spacy.cli  # type: ignore
+    except ImportError:
+        return
+
+    def refuse(model, *args, **kwargs):
+        raise RuntimeError(f'spaCy model {model!r} is missing from the add-on bundle')
+    spacy.cli.download = refuse
+    try:
+        import spacy.cli.download as download_module  # type: ignore
+        download_module.download = refuse
+    except ImportError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +299,11 @@ def handle_tts_synthesize(rid: str, params: dict, defaults: dict) -> None:
 # Main loop
 # ---------------------------------------------------------------------------
 def main() -> int:
+    if getattr(sys, 'frozen', False) and sys.argv[1:2] == ['-m']:
+        # Something ran the frozen add-on as if it were Python
+        # (`sys.executable -m pip ...`). It isn't; don't answer as an add-on.
+        sys.stderr.write('kokoro-addon is not a Python interpreter\n')
+        return 2
     manifest_path = Path(__file__).resolve().parent / 'manifest.json'
     voices: list[dict] = []
     languages: list[str] = []

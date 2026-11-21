@@ -86,6 +86,11 @@ jobs:
           # 4.40 is the floor (`isin_mps_friendly` came in then), 4.55 is
           # where the breakage starts.
           pip install --upgrade "transformers>=4.40,<4.55"
+          # spaCy's English model, for misaki's English G2P. Bundled: without
+          # it spaCy downloads it at runtime with `sys.executable -m pip`,
+          # which in a frozen add-on is the add-on itself (1.0.6 hung on its
+          # first English line). 3.8.0 is the model for spaCy 3.8.
+          pip install "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
 
       - name: Build add-on bundle
         run: pyinstaller kokoro-addon.spec --distpath dist/
@@ -132,6 +137,13 @@ jobs:
           caps = frame.get('capabilities') or []
           assert any(c.get('task') == 'tts.synthesize' for c in caps), caps
           PY
+
+      - name: Speak real lines with the frozen binary
+        shell: bash
+        run: |
+          BIN="dist/kokoro-addon/kokoro-addon"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="${BIN}.exe"; fi
+          python tools/smoke_synth.py "$BIN"
 
       - name: Pack zip
         id: pack
