@@ -335,6 +335,15 @@ def main() -> int:
         ],
     })
 
+    # Load torch and kokoro here, in the main thread, before any request.
+    # Imported from the request thread (1.0.6 did), the frozen add-on could
+    # hang loading torch's native extension (always on the Windows CI
+    # runner, sometimes on Linux). Requests wait in the pipe meanwhile.
+    try:
+        import kokoro  # type: ignore  # noqa: F401
+    except Exception:
+        log.exception('kokoro import failed')   # reported per request by _get_pipeline
+
     for raw_line in sys.stdin:
         raw_line = raw_line.strip()
         if not raw_line:
