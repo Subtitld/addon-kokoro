@@ -386,4 +386,9 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    code = main()
+    # Leave without running interpreter shutdown: torch's thread pools kept
+    # the frozen add-on alive after `shutdown` on macOS. Every frame is
+    # already written and flushed.
+    sys.stderr.flush()
+    os._exit(code)
