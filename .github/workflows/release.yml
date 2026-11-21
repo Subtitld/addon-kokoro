@@ -134,6 +134,7 @@ jobs:
                   except Exception: pass
           print('frame:', (line or '').strip())
           if not line:
+              print(proc.stderr.read()[-4000:])
               sys.exit('no hello frame received within 30 s')
           frame = json.loads(line)
           assert frame.get('type') == 'hello', frame
