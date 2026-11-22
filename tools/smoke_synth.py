@@ -60,7 +60,14 @@ def main(binary: str) -> int:
             print(f'ok {voice}: {seconds:.2f} s', flush=True)
         proc.stdin.write(json.dumps({'type': 'shutdown'}) + '\n')
         proc.stdin.flush()
-        proc.wait(timeout=30)
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            # As Subtitld does after its grace period. Seen on the macOS
+            # runner with 26.11.2: every line spoken, then no exit.
+            print('warning: still running 30 s after shutdown; terminating it, as Subtitld would', flush=True)
+            proc.terminate()
+            proc.wait(timeout=10)
     finally:
         timer.cancel()
         if proc.poll() is None:
